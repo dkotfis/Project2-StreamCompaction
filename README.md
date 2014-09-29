@@ -3,131 +3,31 @@ Project-2
 
 A Study in Parallel Algorithms : Stream Compaction
 
-# INTRODUCTION
-Many of the algorithms you have learned thus far in your career have typically
-been developed from a serial standpoint.  When it comes to GPUs, we are mainly
-looking at massively parallel work.  Thus, it is necessary to reorient our
-thinking.  In this project, we will be implementing a couple different versions
-of prefix sum.  We will start with a simple single thread serial CPU version,
-and then move to a naive GPU version.  Each part of this homework is meant to
-follow the logic of the previous parts, so please do not do this homework out of
-order.
+What I have Done:
+ 1.) Scan
+	- CPU
+	- Naive GPU
+	- One Block GPU
+	- N Block GPU
+ 2.) Scatter
+	- CPU
+	- GPU (w/ One Block)
+ 3.) Compact
+	- CPU
+	- GPU (w/ One Block)
 
-This project will serve as a stream compaction library that you may use (and
-will want to use) in your
-future projects.  For that reason, we suggest you create proper header and CUDA
-files so that you can reuse this code later.  You may want to create a separate
-cpp file that contains your main function so that you can test the code you
-write.
+What I have Started:
+ - Compaction using Thrust. I put this to the side once I had trouble with device/host vectors and lots of crashing my system. The thrust documentation is pretty confusing, and the compiler wasn't catching enough of my dumb mistakes to help me get anywhere.
+ - N Block Scan Optimizations. I suspect that there is a better way to do this than my brute-force-ish approach that doesn't seem like it utilizes parallelism very well.
 
-# OVERVIEW
-Stream compaction is broken down into two parts: (1) scan, and (2) scatter.
+Known Bugs:
+ - Naive Scan and N Block Scan come up short by 1 depth iteration consistently. I can't find the source of this, since the calculation is the same as in One Block. It seems to be imprecision in the floating point operations on the GPU.
+ - The last element of Compact can be pretty hit or miss. I use extrinsic calculations for all of the intermediary steps, so the value of the last element isn't maintained.
 
-## SCAN
-Scan or prefix sum is the summation of the elements in an array such that the
-resulting array is the summation of the terms before it.  Prefix sum can either
-be inclusive, meaning the current term is a summation of all the elements before
-it and itself, or exclusive, meaning the current term is a summation of all
-elements before it excluding itself. 
+What I have learned:
+ - Start earlier. Even though Patrick projected this to take 3-5 hours, putting it off until the weekend wasn't wise. I spent upwards of 15 hours on it and didn't get a chance to do much analysis or optimization.
+ - Templates + CUDA can be rough. I tried templating all of my stuff so it could be used with arrays of different data types. A lot of times this resulted in strange and unhelpful compiler errors that not even the internet knew anything about.
 
-Inclusive:
-
-In : [ 3 4 6 7 9 10 ]
-
-Out : [ 3 7 13 20 29 39 ]
-
-Exclusive
-
-In : [ 3 4 6 7 9 10 ]
-
-Out : [ 0 3 7 13 20 29 ]
-
-Note that the resulting prefix sum will always be n + 1 elements if the input
-array is of length n.  Similarly, the first element of the exclusive prefix sum
-will always be 0.  In the following sections, all references to prefix sum will
-be to the exclusive version of prefix sum.
-
-## SCATTER
-The scatter section of stream compaction takes the results of the previous scan
-in order to reorder the elements to form a compact array.
-
-For example, let's say we have the following array:
-[ 0 0 3 4 0 6 6 7 0 1 ]
-
-We would only like to consider the non-zero elements in this zero, so we would
-like to compact it into the following array:
-[ 3 4 6 6 7 1 ]
-
-We can perform a transform on input array to transform it into a boolean array:
-
-In :  [ 0 0 3 4 0 6 6 7 0 1 ]
-
-Out : [ 0 0 1 1 0 1 1 1 0 1 ]
-
-Performing a scan on the output, we get the following array :
-
-In :  [ 0 0 1 1 0 1 1 1 0 1 ]
-
-Out : [ 0 0 0 1 2 2 3 4 5 5 ]
-
-Notice that the output array produces a corresponding index array that we can
-use to create the resulting array for stream compaction. 
-
-# PART 1 : REVIEW OF PREFIX SUM
-Given the definition of exclusive prefix sum, please write a serial CPU version
-of prefix sum.  You may write this in the cpp file to separate this from the
-CUDA code you will be writing in your .cu file. 
-
-# PART 2 : NAIVE PREFIX SUM
-We will now parallelize this the previous section's code.  Recall from lecture
-that we can parallelize this using a series of kernel calls.  In this portion,
-you are NOT allowed to use shared memory.
-
-### Questions 
-* Compare this version to the serial version of exclusive prefix scan. Please
-  include a table of how the runtimes compare on different lengths of arrays.
-* Plot a graph of the comparison and write a short explanation of the phenomenon you
-  see here.
-
-# PART 3 : OPTIMIZING PREFIX SUM
-In the previous section we did not take into account shared memory.  In the
-previous section, we kept everything in global memory, which is much slower than
-shared memory.
-
-## PART 3a : Write prefix sum for a single block
-Shared memory is accessible to threads of a block. Please write a version of
-prefix sum that works on a single block.  
-
-## PART 3b : Generalizing to arrays of any length.
-Taking the previous portion, please write a version that generalizes prefix sum
-to arbitrary length arrays, this includes arrays that will not fit on one block.
-
-### Questions
-* Compare this version to the parallel prefix sum using global memory.
-* Plot a graph of the comparison and write a short explanation of the phenomenon
-  you see here.
-
-# PART 4 : ADDING SCATTER
-First create a serial version of scatter by expanding the serial version of
-prefix sum.  Then create a GPU version of scatter.  Combine the function call
-such that, given an array, you can call stream compact and it will compact the
-array for you.  Finally, write a version using thrust. 
-
-### Questions
-* Compare your version of stream compact to your version using thrust.  How do
-  they compare?  How might you optimize yours more, or how might thrust's stream
-  compact be optimized.
-
-# EXTRA CREDIT (+10)
-For extra credit, please optimize your prefix sum for work parallelism and to
-deal with bank conflicts.  Information on this can be found in the GPU Gems
-chapter listed in the references.  
-
-# SUBMISSION
-Please answer all the questions in each of the subsections above and write your
-answers in the README by overwriting the README file.  In future projects, we
-expect your analysis to be similar to the one we have led you through in this
-project.  Like other projects, please open a pull request and email Harmony.
-
-# REFERENCES
-"Parallel Prefix Sum (Scan) with CUDA." GPU Gems 3.
+Analysis:
+ - CPU Performance - I've uploaded a screenshot of console output showing CPU speeds for prefix sum for a wide variety of array lengths. It seems as though it is O(1) for these calculations, at least up to the resolution of timing measurement. More analysis could show whether there is a point where this acutally breaks down. Note: all of these are using arrays of floats, not ints.
+ - Naive Scan Performance - I've uploaded a screenshot of console output showing GPU speeds for scan matching those for the CPU evaluation. For all cases, it is at least 2 orders of magnitude slower than the CPU implementation, though I didn't average the time over 100+ runs which would allow the GPU to start to speed up. After lengths 100,000 and up, the timing seems to go to O(n) once we start to lose enough time going back and forth to global memory.

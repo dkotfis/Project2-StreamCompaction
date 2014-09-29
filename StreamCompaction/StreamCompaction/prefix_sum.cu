@@ -123,16 +123,17 @@ __global__ void one_block_prefix_sum(T* in, T* out, int* size) {
 template <typename T> 
 __global__ void n_block_prefix_sum(T* in, T* out, int* size) {
 
-    int index = blockIdx.x * blockDim.x + threadIdx.x; //Keep it simple, only use x since arrays are 1 dimensional
+    int index = blockIdx.x * blockDim.x + threadIdx.x; //can't keep it simple anymore
 	int s_index = threadIdx.x;
 
 	// Create shared memory
 	extern __shared__ T s[];
 	T* in_s = &s[0];
-	T* out_s = &s[*size];
+	T* out_s = &s[blockDim.x];
+	__shared__ float lower_tile_value;
 
-	//Start by shifting right since the calculation is going to be inclusive and we want exclusive
 	//Load into shared memory
+	//Start by shifting right since the calculation is going to be inclusive and we want exclusive
 	if (index > 0) {
 		in_s[s_index] = in[index-1];
 	} else {
@@ -141,7 +142,7 @@ __global__ void n_block_prefix_sum(T* in, T* out, int* size) {
 	__syncthreads();
 
 	//Calculate the max depth
-	int max_depth = ceil(log((float) *size)/log(2.0f));
+	int max_depth = ceil(log((float) blockDim.x)/log(2.0f));
 
 	//Loop over each depth
 	for (int d = 1; d <= max_depth; d++) {
@@ -184,6 +185,34 @@ __global__ void n_block_prefix_sum(T* in, T* out, int* size) {
 		out[index] = in_s[s_index];
 	}
 
+	__syncthreads();
+
+	//Determine the number of additional loops that will be required
+	int kernel_calls = ceil(log((float) gridDim.x)/log(2.0f))+1;
+
+	//Loop over the kernel calls, doing a pseudo-serial scan over the remaining layers
+	for (int k = 0; k < kernel_calls; k++) {
+		
+		//Swap out and in
+		T* temp = in;
+		in = out;
+		out = temp;
+	
+		//Load the needed value for this tile into shared memory
+		if (s_index == 0) {
+			if (blockIdx.x >= (int) pow(2.0f, k)) {
+				lower_tile_value = in[(blockIdx.x + 1 - (int) pow(2.0f, k))*blockDim.x - 1];
+			} else {
+				lower_tile_value = 0.0f;
+			}
+		}
+		__syncthreads();
+
+		//Add to the output
+		out[index] = in[index] + lower_tile_value;
+		__syncthreads();
+	}
+
 }
 
 template <typename T> 
@@ -217,6 +246,7 @@ void gpuNaivePrefixSum(const T* in, T* out, int size) {
 
 	//Call the kernel
 	naive_prefix_sum<T><<<1,size>>>(in_d, out_d, size_d);
+	cudaDeviceSynchronize();
 
 	//Copy data from GPU
 	cudaMemcpy(out, out_d, size*sizeof(T), cudaMemcpyDeviceToHost);
@@ -268,10 +298,9 @@ void gpuNBlockPrefixSum(const T* in, T* out, int size) {
 
 	//Determine the needed number of blocks/threads
 	int needed_bytes = 2*size*sizeof(T);
-	int n_blocks = 16384/needed_bytes;
-	int threads_per_block = size/n_blocks;
+	int threads_per_block = 16384/needed_bytes;
+	int n_blocks = size/threads_per_block;
 
-	//Call the kernel
 	n_block_prefix_sum<T><<<n_blocks, threads_per_block, needed_bytes>>>(in_d, out_d, size_d);
 	cudaDeviceSynchronize();
 
